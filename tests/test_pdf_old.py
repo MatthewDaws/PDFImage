@@ -1,6 +1,6 @@
 import pytest
 
-import pdfimage.pdf as pdf
+import pdfimage.pdf_old as pdf
 import io, os
 
 def test_OBJ():
