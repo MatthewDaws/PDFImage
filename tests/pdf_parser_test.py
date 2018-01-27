@@ -2,21 +2,27 @@ import pytest
 
 import pdfimage.pdf_parser as pdf_parser
 import pdfimage.pdf as pdf
+import io
 
 def test_PullBytesStream():
+    # TEST `tell`
     st = pdf_parser.PullBytesStream(b"0123456789")
     assert len(st) == 10
+    assert st.tell() == 0
     assert st[0] == b"0"[0]
     assert st[5] == b"5"[0]
     assert st[9] == b"9"[0]
+    assert st.tell() == 0
     with pytest.raises(IndexError):
         st[10]
 
     assert st.read(2) == b"01"
+    assert st.tell() == 2
     assert len(st) == 8
     assert st[0] == b"2"[0]
 
     assert st.read() == b"23456789"
+    assert st.tell() == 10
     assert len(st) == 0
     with pytest.raises(IndexError):
         st[0]
@@ -25,6 +31,36 @@ def test_PullBytesStream():
     assert st[:5] == b"01234"
     assert st[2:3] == b"2"
     assert st[2:6:2] == b"24"
+
+    st = pdf_parser.PullBytesStream(b"01 \t234\x00\n\r567")
+    assert st.read(2) == b"01"
+    st.skip_whitespace()
+    assert len(st) == 9
+    assert st[:3] == b"234"
+    st.skip_whitespace()
+    assert len(st) == 9
+    assert st[:3] == b"234"
+    st.read(3)
+    st.skip_whitespace()
+    assert len(st) == 3
+    assert st[:3] == b"567"
+
+    st = pdf_parser.PullBytesStream(b"01 \t234\x00\n\r567")
+    assert pdf_parser.length_suffix_whitespace(st) == 0
+    assert pdf_parser.length_suffix_whitespace(st, 2) == 2
+    st.read(2)
+    assert pdf_parser.length_suffix_whitespace(st) == 2
+
+def test_at_eol_marker():
+    assert pdf_parser.at_eol_marker(b"\x0a", 0) == 1
+    assert pdf_parser.at_eol_marker(b"\x0d", 0) == 1
+    assert pdf_parser.at_eol_marker(b"\x0d\x0a", 0) == 2
+    assert pdf_parser.at_eol_marker(b"\x0a\x0d", 0) == 1
+
+    assert pdf_parser.at_eol_marker(b"sss\x0a", 3) == 1
+    assert pdf_parser.at_eol_marker(b"sss\x0d", 3) == 1
+    assert pdf_parser.at_eol_marker(b"sss\x0d\x0a", 3) == 2
+    assert pdf_parser.at_eol_marker(b"sss\x0a\x0d", 3) == 1
 
 def test_BooleanParser():
     p = pdf_parser.BooleanParser()
@@ -104,3 +140,76 @@ def test_ParseObjectId():
     assert p.parse(b"512 12 RR") is None
     assert p.parse(b"512 12 R<") == (pdf.PDFObjectId(512, 12), 8)
     assert p.parse(b"512 12 R ahdsga") == (pdf.PDFObjectId(512, 12), 8)
+
+def test_ParseArray():
+    p = pdf_parser.ParseArray()
+    assert p.parse(b"ahsg") is None
+    assert p.parse(b"[512 /Matt (Bob)]") == (None, 1)
+
+def test_ArrayConsumer():
+    p = pdf_parser.ParseArray()
+    c = p.consumer()
+    assert isinstance(c, pdf_parser.ArrayConsumer)
+
+    c.consume(pdf.PDFName("Matt"))
+    assert c.end(b"123.2") is None
+    assert c.end(b"]ahsgas") == 1
+    assert c.build() == pdf.PDFArray([pdf.PDFName("Matt")])
+
+def test_ParseDictionary():
+    p = pdf_parser.ParseDictionary()
+    assert p.parse(b"ahsga") is None
+    assert p.parse(b"<</Mat 12>>") == (None, 2)
+    
+def test_DictionaryConsumer():
+    p = pdf_parser.ParseDictionary()
+    c = p.consumer()
+    assert isinstance(c, pdf_parser.DictionaryConsumer)
+
+    assert c.end(b"ajsdga") is None
+    assert c.end(b">>ahsga") == 2
+
+    c.consume(pdf.PDFName("Mat"))
+    c.consume(pdf.PDFObjectId(12, 0))
+    d = c.build()
+    assert bytes(d[pdf.PDFName("Mat")]) == b"12 0 R"
+
+def test_StreamParser():
+    p = pdf_parser.StreamParser(5)
+    assert p.parse(b"ahjsga") is None
+    assert p.parse(b"stream\n8gsd5\nendstream<<") == (pdf.PDFRawStream(b"8gsd5"), 22)
+    assert p.parse(b"stream\r\n8gsd5endstream<<") == (pdf.PDFRawStream(b"8gsd5"), 22)
+    assert p.parse(b"stream\r8gsd5endstream<<") is None
+
+    with pytest.raises(pdf_parser.ParseError):
+        p.parse(b"stream\n8gsd55\nendstream<<")
+    with pytest.raises(pdf_parser.ParseError):
+        p.parse(b"stream\n8gsdendstream<<")
+
+def test_PDFParser_1():
+    f = io.BytesIO(b"\n<</Linearized 1/L 10171355/O 1489/E 14578/N 480/T 10169091/H [ 470 1215]>>\n")
+    p = pdf_parser.PDFParser(f)
+    got = list(p)
+    assert len(got) == 1
+    got = got[0]
+    assert got[pdf.PDFName("Linearized")] == pdf.PDFNumeric(1)
+    assert got[pdf.PDFName("L")] == pdf.PDFNumeric(10171355)
+    assert got[pdf.PDFName("O")] == pdf.PDFNumeric(1489)
+    assert got[pdf.PDFName("E")] == pdf.PDFNumeric(14578)
+    assert got[pdf.PDFName("N")] == pdf.PDFNumeric(480)
+    assert got[pdf.PDFName("T")] == pdf.PDFNumeric(10169091)
+    assert got[pdf.PDFName("H")] == pdf.PDFArray([pdf.PDFNumeric(470), pdf.PDFNumeric(1215)])
+
+    keys = []
+    for x in got:
+        assert isinstance(x, pdf.PDFName)
+        keys.append(x.name)
+    assert set(keys) == {b"Linearized", b"L", b"O", b"E", b"N", b"T", b"H"}
+    
+def test_PDFParser_2():
+    f = io.BytesIO(b"<<\n>>\n")
+    p = pdf_parser.PDFParser(f)
+    got = list(p)
+    assert len(got) == 1
+    got = got[0]
+    print(got)

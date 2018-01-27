@@ -8,10 +8,12 @@ will break.
 
 from .pdf import *
 import io as _io
+from .pdf_parser import PDFParser, PullBytesStream, StreamParser
 
 _EOL_SET = {b"\n", b"\r"}
 _WHITESPACE_SET = {b"\x00", b"\x09", b"\x0a", b"\x0c", b"\x0d", b"\x20"}
 _DELIMITERS = b"()<>[]{}/%"
+_DIGITS = b"0123456789"
 
 class PDFLineReader():
     """Wraps a file-like object and allows reading "lines" in the meaning of
@@ -130,19 +132,112 @@ class PDF():
         """Dictionary from :class:`PDFObjectId` objects to location"""
         return self._obj_lookup
 
+    def _decimal_number_from(self, data):
+        out = b""
+        i = 0
+        while len(data) > i and data[i:i+1] in _DIGITS:
+            out += data[i:i+1]
+            i += 1
+        if len(out) == 0:
+            return None
+        return out
+
+    def _parse_object_header(self, stream):
+        stream.skip_whitespace()
+        obj_id = self._decimal_number_from(stream)
+        if obj_id is None:
+            return None
+        stream.read(len(obj_id))
+
+        stream.skip_whitespace()
+        gen_id = self._decimal_number_from(stream)
+        if gen_id is None:
+            return None
+        stream.read(len(gen_id))
+        
+        stream.skip_whitespace()
+        if stream[:3] != b"obj":
+            return None
+
+        return obj_id, gen_id
+
     def object_at(self, location):
-        """Read the object at the given location in the file."""
+        """Read the object at the given location in the file.
+        We have to handle streams, which we often cannot decode without reading
+        another object.
+
+        :return: List of PDF objects.  If the final object should be a stream,
+            the final entry will be a placeholder, :class:`PDFStreamIndicator`.
+        """
         self._file.seek(location)
-        lr = PDFLineReaderComments(self._file)
-        header = split_by_whitespace(lr.readline())
-        if len(header) != 3 or header[2] != b"obj":
-            raise ValueError("Line at {} not an object definition: '{}'".format(location, header))
-        try:
-            obj_id = int(header[0])
-            gen_id = int(header[1])
-        except ValueError:
-            raise ValueError("Line at {} not a valid object definition: '{}'".format(location, header))
-        # TODO
+        
+        stream = PullBytesStream(self._file)
+        header = self._parse_object_header(stream)
+        if header is None:
+            raise ValueError("Line at {} not an object definition".format(location))
+        obj_id, gen_id = [int(x.decode()) for x in header]
+
+        p = PDFParser(self._file)
+        objects = list(p)
+        if repr(objects[-1]).startswith("PDFDictionary") and p.stream[:6] == b"stream":
+            objects.append(PDFStreamIndicator(p.stream.tell()))
+        elif p.stream[:6] != b"endobj":
+            raise ValueError("Finished parsing object, but not ended by endobj marker: {}".format(p.stream[:6]))
+        return objects
+
+    def read_stream(self, location, length):
+        """Reads a stream, returning a stream object.
+
+        :param location: Location in the PDF file where the stream is.
+        :param length: Length of the stream.
+        """
+        self._file.seek(location)
+        stream = PullBytesStream(self._file)
+        parser = StreamParser(length)
+        result = parser.parse(stream)
+        if result is None:
+            raise ValueError("Not a valid stream at this location: {}".format(location))
+        return result[0]
+
+    def full_object_at(self, location):
+        """Read the object at the given location in the file.  Recursively
+        follows references to "indirect objects" and adds streams.
+
+        Note that it is quite allowed that PDF files can contain cyclic
+        relations (thanks to the "/Parent" name, for example).  So care is
+        required!
+
+        :return: A single PDF object.
+        """
+        objs = self.object_at(location)
+        if not (len(objs) == 1 or (len(objs) == 2 and isinstance(objs[1], PDFStreamIndicator))):
+            raise ValueError("Not a single object...")
+        obj = self._recurse_populate(objs[0])
+        if len(objs) == 2:
+            length = int(obj[PDFName("Length")].value)
+            stream = self.read_stream(objs[1].location, length)
+            return PDFStream(list(obj.items()), stream.contents)
+        return obj
+
+    def _recurse_populate(self, obj):
+        def should_recurse(obj):
+            return isinstance(obj, PDFArray) or isinstance(obj, PDFDictionary)
+        
+        def make_new_object(old_obj):
+            if isinstance(old_obj, PDFObjectId):
+                if old_obj not in self.object_lookup:
+                    return PDFNull()
+                location = self.object_lookup[old_obj]
+                return self.full_object_at(location)
+            elif should_recurse(old_obj):
+                return self._recurse_populate(old_obj)
+            return old_obj
+        
+        if isinstance(obj, PDFArray):
+            return PDFArray([make_new_object(ob) for ob in obj])
+        if isinstance(obj, PDFDictionary):
+            return PDFDictionary([(k, make_new_object(ob)) for k, ob in obj.items()])
+        return obj
 
     def _tail(self, chunk_size = 2048):
         """Return a chunk at the end of the file."""
@@ -212,3 +307,12 @@ class PDF():
             raise ValueError("Initial byte marker {} is not a PDF file".format(data))
         self._version = data[:8].decode()
 
+
+class PDFStreamIndicator():
+    def __init__(self, location):
+        self._loc = location
+
+    @property
+    def location(self):
+        """The location in the PDF file where the stream begins."""
+        return self._loc

@@ -2,7 +2,7 @@
 pdf_parser.py
 ~~~~~~~~~~~~~
 
-Does the hard work of parsing low-level PDF into Python objects
+Does the hard work of parsing low-level PDF into Python objects.
 """
 
 from .pdf import *
@@ -23,12 +23,20 @@ class PullBytesStream():
         self._buffer = b""
         self._length = None
 
+    def skip_whitespace(self):
+        """Advance the position over any whitespace"""
+        self.read(length_suffix_whitespace(self))
+
     def _length_left(self):
         location = self._file.tell()
         self._file.seek(0, 2)
         total_length = self._file.tell()
         self._file.seek(location)
         return total_length - location
+
+    def tell(self):
+        """The current effective file position."""
+        return self._file.tell() - len(self._buffer)
 
     def read(self, n=-1):
         """Read the next `n` bytes without processing; if `n==-1` (the default)
@@ -79,11 +87,38 @@ class ParseError(Exception):
         super().__init__(msg)
 
 
+def length_suffix_whitespace(data, start_index=0):
+    """Return the length of whitespace at the start of the byte array `data`.
+    
+    :param data: Array-like object to look at
+    :param start_index: Where to start looking, defaults to 0
+    """
+    index = start_index
+    while True:
+        if len(data) <= index:
+            return index - start_index
+        if data[index:index+1] not in _WHITESPACE:
+            return index - start_index
+        index += 1
+
 def bytes_in_context(data, index):
     """Helper method to display a useful extract from a buffer."""
     start = max(0, index - 10)
     end = min(len(data), index + 15)
     return data[start:end]
+
+def at_eol_marker(data, index):
+    """Is the array at index indicating an end of line (eol)?
+
+    :return: The number of bytes indicating the eol, or 0 if no eol.
+    """
+    if len(data) > index and data[index:index+1] == b"\x0a":
+        return 1
+    if len(data) > index+1 and data[index:index+2] == b"\x0d\x0a":
+        return 2
+    if len(data) > index and data[index:index+1] == b"\x0d":
+        return 1
+    return 0
 
 
 class Parser():
@@ -94,13 +129,14 @@ class Parser():
         :return: `None` if this token is not for us.
 
           Otherwise, pair `(obj, used)` where `obj` is a pdf object we have
-          parsed, and `used` is the number of bytes consumed.
+          parsed, and `used` is the number of bytes consumed.  If `obj` is
+          `None` then we expect :meth:`consumer` to return a consumer.
         """
         raise NotImplementedError()
 
     def consumer(self):
         """An object to route further generated objects to, or `None` to
-        process directly."""
+        process directly.  Should be an instance of :class:`Consumer`"""
         return None
 
 
@@ -308,13 +344,179 @@ class ParseObjectId(Parser):
         return None
 
 
+class ParseArray(Parser):
+    def parse(self, data):
+        if len(data) > 0 and data[0:1] == b"[":
+            return None, 1
+        return None
+
+    def consumer(self):
+        return ArrayConsumer()
+
+
+class Consumer():
+    """Abstract base class for "consumers" which combine a number of objects"""
+    def consume(self, obj):
+        """Send constructed objects here."""
+        raise NotImplementedError()
+
+    def end(self, data):
+        """Does the current `data` give a token which says that this container
+        object is ended?
+        
+        :return: `None` to indicate we have not processed the stream; or an int
+          count of how many bytes we consumed.
+        """
+        raise NotImplementedError()
+
+    def build(self):
+        """Return the container object."""
+        raise NotImplementedError()
+
+
+class ArrayConsumer(Consumer):
+    def __init__(self):
+        self._array = []
+
+    def consume(self, obj):
+        self._array.append(obj)
+
+    def end(self, data):
+        if len(data) > 0 and data[0:1] == b"]":
+            return 1
+        return None
+
+    def build(self):
+        return PDFArray(self._array)
+
+
+class ParseDictionary(Parser):
+    def parse(self, data):
+        if len(data) > 1 and data[0:2] == b"<<":
+            return None, 2
+        return None
+
+    def consumer(self):
+        return DictionaryConsumer()
+
+
+class DictionaryConsumer(Consumer):
+    def __init__(self):
+        self._dict_items = []
+        self._current_key = None
+
+    def consume(self, obj):
+        if self._current_key is None:
+            self._current_key = obj
+        else:
+            self._dict_items.append((self._current_key, obj))
+            self._current_key = None
+
+    def end(self, data):
+        if len(data) > 1 and data[0:2] == b">>":
+            return 2
+        return None
+
+    def build(self):
+        return PDFDictionary(self._dict_items)
+
+
+class StreamParser(Parser):
+    """An annoying special case: should only be called immediately after
+    building a dictionary.  Need to know the expected length!  This is even
+    harder, because the length is allowed to be an indirect object, so this
+    module cannot know the length.
+    
+    :param length: The number of bytes in this stream
+    """
+    def __init__(self, length):
+        self._len = length
+
+    def parse(self, data):
+        if len(data) < 6 or data[:6] != b"stream":
+            return None
+        have_lf = (len(data) >=7 and data[6:7] == b"\x0a")
+        have_cr_lf = (len(data) >=8 and data[6:8] == b"\x0d\x0a")
+        if not(have_lf or have_cr_lf):
+            return None
+        if have_lf:
+            index = 7
+        else:
+            index = 8
+        
+        expected_end = index + self._len
+        if expected_end > len(data):
+            raise ParseError("Not enough data to form the stream!")
+        stream_data = data[index:expected_end]
+        eolbytes = at_eol_marker(data, expected_end)
+        if expected_end + eolbytes + 9 > len(data):
+            raise ParseError("Not enough data to allow for endstream marker")
+        if data[expected_end + eolbytes:expected_end + eolbytes + 9] != b"endstream":
+            raise ParseError("Stream does not end with endstream marker")
+        
+        return PDFRawStream(stream_data), expected_end + eolbytes + 9
+
+
 class PDFParser():
     """Does the hard work of parsing low-level code into PDF objects.
     
-    :param line_reader: :class:`pdf_read.PDFLineReaderComments` object to read
-      data from.
+    :param file: file-like object to read bytes from.
     """
-    def __init__(self, line_reader):
-        self._lr = line_reader
+    def __init__(self, file):
+        self._pbs = PullBytesStream(file)
+        self._parsers = [BooleanParser(), ParseObjectId(), NumericParser(),
+                StringParser(), ParseDictionary(), HexStringParser(),
+                ParseName(), ParseNull(), ParseArray()]
 
-    
+    def __iter__(self):
+        consumers = []
+        while True:
+            self._pbs.skip_whitespace()
+            if len(self._pbs) == 0:
+                return
+            parser, obj, used_bytes = self._find_parser()
+            if parser is None:
+                while len(consumers) > 0:
+                    consumer = consumers[-1]
+                    used_bytes = consumer.end(self._pbs)
+                    if used_bytes is not None:
+                        self._pbs.read(used_bytes)
+                        obj = consumer.build()
+                        consumers.pop()
+                if obj is not None:
+                    yield obj
+                    continue
+                return
+
+            self._pbs.read(used_bytes)
+            if obj is None:
+                consumers.append(parser.consumer())
+                continue
+            
+            while len(consumers) > 0 and obj is not None:
+                consumer = consumers[-1]
+                consumer.consume(obj)
+                self._pbs.skip_whitespace()
+                used_bytes = consumer.end(self._pbs)
+                if used_bytes is not None:
+                    self._pbs.read(used_bytes)
+                    obj = consumer.build()
+                    consumers.pop()
+                else:
+                    obj = None
+            if obj is not None:
+                yield obj
+
+    def _find_parser(self):
+        for p in self._parsers:
+            result = p.parse(self._pbs)
+            if result is None:
+                continue
+            return (p, *result)
+        return None, None, None
+
+    @property
+    def stream(self):
+        """The stream reader object; for accessing the data stream in an
+        array-like manner."""
+        return self._pbs

@@ -1,6 +1,7 @@
 import pytest
 
 import pdfimage.pdf_read as pdf_read
+import pdfimage.pdf as pdf
 import os, io
 
 @pytest.fixture
@@ -62,3 +63,46 @@ def test_split_by_whitespace():
     assert pdf_read.split_by_whitespace(b"Matt D\x00") == [b"Matt", b"D"]
     assert pdf_read.split_by_whitespace(b" Matt \n\tD\x00\t") == [b"Matt", b"D"]
     
+def test_read_object_1(pdf1):
+    p = pdf_read.PDF(pdf1)
+    objs = p.object_at(10)
+    assert len(objs) == 1
+    assert objs[0][pdf.PDFName("Pages")] == pdf.PDFObjectId(2, 0)
+    assert objs[0][pdf.PDFName("Type")] == pdf.PDFName("Catalog")
+
+def test_read_stream(pdf1):
+    pdf = pdf_read.PDF(pdf1)
+    loc = pdf.object_lookup[pdf_read.PDFObjectId(4, 0)]
+    objs = pdf.object_at(loc)
+    assert isinstance(objs[1], pdf_read.PDFStreamIndicator)
+    loc = objs[1].location
+    obj = pdf.read_stream(loc, 33)
+    assert obj.contents.startswith(b"q\n1637")
+    assert len(obj.contents) == 33
+
+def test_read_full_object(pdf1):
+    p = pdf_read.PDF(pdf1)
+    loc = p.object_lookup[pdf_read.PDFObjectId(5, 0)]
+    obj = p.full_object_at(loc)
+    assert repr(obj) == "PDFNumeric(33)"
+
+    loc = p.object_lookup[pdf_read.PDFObjectId(4, 0)]
+    obj = p.full_object_at(loc)
+    assert obj[pdf.PDFName("Length")] == pdf.PDFNumeric(33)
+    assert obj.stream_contents.startswith(b"q\n1637")
+
+def test_read_object_all(pdf1):
+    pdf = pdf_read.PDF(pdf1)
+    for key, location in pdf.object_lookup.items():
+        # Sort of cheeky test...
+        print(key, location, pdf.object_at(location))
+
+@pytest.fixture
+def pdf2():
+    return os.path.join("tests", "data", "eg1.pdf")
+
+def test_read_object_all1(pdf2):
+    pdf = pdf_read.PDF(pdf2)
+    for key, location in pdf.object_lookup.items():
+        # Sort of cheeky test...
+        print(key, location, pdf.object_at(location))
