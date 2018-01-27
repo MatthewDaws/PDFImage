@@ -52,6 +52,12 @@ def test_find_last_occurance():
     x = pdf_read.PDF.find_last_occurance(data, b"%%EOF")
     assert x == -1
 
+def test_trailer(pdf1):
+    p = pdf_read.PDF(pdf1)
+    assert p.trailer[pdf.PDFName("Size")] == pdf.PDFNumeric(18)
+    assert pdf.PDFName("Info") in p.trailer
+    assert pdf.PDFName("Root") in p.trailer
+
 def test_object_lookup(pdf1):
     pdf = pdf_read.PDF(pdf1)
     assert pdf.object_lookup[pdf_read.PDFObjectId(1, 0)] == 10

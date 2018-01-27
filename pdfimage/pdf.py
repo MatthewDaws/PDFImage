@@ -3,6 +3,12 @@ pdf.py
 ~~~~~~
 
 Common data structures for PDF files.
+
+Some resources:
+
+- https://stackoverflow.com/questions/10935091/imagemagick-generate-raw-image-data-for-pdf-flate-embedding
+- https://www.prepressure.com/pdf/basics/compression
+- https://www.adobe.com/devnet/pdf/pdf_reference.html
 """
 
 import collections as _collections

@@ -8,7 +8,7 @@ will break.
 
 from .pdf import *
 import io as _io
-from .pdf_parser import PDFParser, PullBytesStream, StreamParser
+from .pdf_parser import PDFParser, PullBytesStream, StreamParser, ParseDictionary
 
 _EOL_SET = {b"\n", b"\r"}
 _WHITESPACE_SET = {b"\x00", b"\x09", b"\x0a", b"\x0c", b"\x0d", b"\x20"}
@@ -126,6 +126,11 @@ class PDF():
     def version(self):
         """The version string of the PDF file."""
         return self._version
+
+    @property
+    def trailer(self):
+        """The :class:`PDFDictionary` object which is the trailer."""
+        return self._trailer_dictionary
 
     @property
     def object_lookup(self):
@@ -274,8 +279,10 @@ class PDF():
         xref_offset = int(lr.readline().strip().decode())
 
         trailer_index = self.find_last_occurance(data[:eof_index], b"trailer")
-        # TODO: Read the trailer dictionary
-        # CHECK for Prev
+        parser = PDFParser(_io.BytesIO(data[trailer_index+7:]))
+        self._trailer_dictionary = list(parser)[0]
+        if PDFName("Prev") in self._trailer_dictionary:
+            raise ValueError("Files with more than one cross-reference not currently supported")
 
         self._read_xrefs(xref_offset)
 
