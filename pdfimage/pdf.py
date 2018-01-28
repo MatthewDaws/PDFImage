@@ -22,8 +22,6 @@ class PDFObjectId():
     def __init__(self, number, generation):
         self._num = number
         self._gen = generation
-        if self._num <=0 or self._gen < 0:
-            raise ValueError()
 
     @property
     def number(self):
@@ -47,13 +45,15 @@ class PDFObjectId():
 
 
 class PDFObject(PDFObjectId):
-    """A PDF object.
+    """A PDF object.  Unlike its base class :class:`PDFObjectId`, the id
+    numbers are mutable, which allows generation of the object before assigning
+    numbers.
 
+    :param data: Contents of the object; should be a typed PDF object.
     :param number: The number of the object
     :param generation: The "generation" of the object
-    :param data: Contents of the object.
     """
-    def __init__(self, number, generation, data):
+    def __init__(self, data=None, number=None, generation=None):
         super().__init__(number, generation)
         self._data = data
 
@@ -61,11 +61,33 @@ class PDFObject(PDFObjectId):
     def data(self):
         return self._data
 
+    @data.setter
+    def data(self, d):
+        self._data = d
+
+    @property
+    def number(self):
+        return self._num
+
+    @number.setter
+    def number(self, n):
+        self._num = n
+
+    @property
+    def generation(self):
+        return self._gen
+
+    @generation.setter
+    def generation(self, g):
+        self._gen = g
+
     def __repr__(self):
         return "PDFObject({}, {})".format(self._num, self._gen)
 
     def __bytes__(self):
-        raise NotImplementedError()
+        if self.number is None or self.generation is None:
+            raise ValueError("Not initialised with a valid id")
+        return super().__bytes__()
 
 
 class PDFBoolean():
@@ -261,6 +283,36 @@ class PDFDictionary(_collections.UserDict):
     def __bytes__(self):
         out = b"\n".join(b" ".join([bytes(k) for k in x]) for x in self.data.items())
         return b"<<" + out + b">>"
+
+
+class PDFSimpleDict(_collections.UserDict):
+    """A simplied PDF Dictionary object, which is just a thin wrapper around a
+    standard Python dictionary.  Can be converted to a full
+    :class:`PDFDictionary` instance according to these rules:
+      - Each key must be convertible to a :class:`PDFName` instance (i.e. a
+        string or bytes string)
+      - Values can be:
+        - Strings / Bytes, which are converted to :class:`PDFName` instances
+        - Numbers, which are converted to :class:`PDFNumeric` instances
+        - `bool`s, which are converted to :class:`PDFBoolean` instances
+        - Should otherwise be pdf object already
+    """
+    def __init__(self):
+        super().__init__()
+
+    def to_dict(self):
+        """Convert to a :class:`PDFDictionary` instance"""
+        value_pairs = []
+        for key, value in self.items():
+            key = PDFName(key)
+            if isinstance(value, str) or isinstance(value, bytes):
+                value = PDFName(value)
+            elif isinstance(value, bool):
+                value = PDFBoolean(value)
+            elif isinstance(value, int) or isinstance(value, float):
+                value = PDFNumeric(value)
+            value_pairs.append((key, value))
+        return PDFDictionary(value_pairs)
 
 
 class PDFRawStream():

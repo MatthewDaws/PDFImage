@@ -8,10 +8,6 @@ def test_PDFObjectId():
     assert obj.generation == 0
     assert repr(obj) == "PDFObjectId(2, 0)"
     assert bytes(obj) == b"2 0 R"
-    with pytest.raises(ValueError):
-        pdf.PDFObjectId(0, 1)
-    with pytest.raises(ValueError):
-        pdf.PDFObjectId(1, -1)
 
 def test_PDFObjectId_eq():
     a = pdf.PDFObjectId(1, 2)
@@ -23,11 +19,23 @@ def test_PDFObjectId_eq():
     assert hash(a) == hash(c)
 
 def test_PDFObject():
-    obj = pdf.PDFObject(1,5,b"agsa")
+    obj = pdf.PDFObject(pdf.PDFNumeric(12.3), 1, 5)
     assert obj.number == 1
     assert obj.generation == 5
-    assert obj.data == b"agsa"
+    assert obj.data == pdf.PDFNumeric(12.3)
     assert repr(obj) == "PDFObject(1, 5)"
+    assert bytes(obj) == b"1 5 R"
+
+    obj = pdf.PDFObject(None, None, 5)
+    with pytest.raises(ValueError):
+        bytes(obj)
+    obj.number = 1
+    assert bytes(obj) == b"1 5 R"
+    obj = pdf.PDFObject(None, 1, None)
+    with pytest.raises(ValueError):
+        bytes(obj)
+    obj.generation = 5
+    assert bytes(obj) == b"1 5 R"
 
 def test_PDFBoolean():
     x = pdf.PDFBoolean(True)
@@ -165,3 +173,16 @@ def test_PDFStream():
 
     y = pdf.PDFStream([(pdf.PDFName("Length"), pdf.PDFNumeric(10))], b"abcdfgiqsp")
     assert x == y
+
+def test_PDFSimpleDict():
+    d = pdf.PDFSimpleDict()
+    d["Filter"] = "FlateDecode"
+    d["BitsPerComponent"] = 8
+    d["Interpolate"] = True
+    d["matt"] = 1.23
+
+    dd = d.to_dict()
+    assert dd[pdf.PDFName("Filter")] == pdf.PDFName("FlateDecode")
+    assert dd[pdf.PDFName("BitsPerComponent")] == pdf.PDFNumeric(8)
+    assert dd[pdf.PDFName("Interpolate")] == pdf.PDFBoolean(True)
+    assert dd[pdf.PDFName("matt")] == pdf.PDFNumeric(1.23)
