@@ -2,6 +2,7 @@ import pytest
 
 import pdfimage.pdf_write as pdf_write
 import pdfimage.pdf as pdf
+import datetime, hashlib
 
 def test_DocumentCatalog():
     pages = pdf.PDFObjectId(5, 2)
@@ -67,6 +68,16 @@ def test_ColourSpaceIndexed():
     expected += b"]"
     assert bytes(csi()) == expected
 
+def test_DateTime():
+    d = pdf_write.DateTime(datetime.datetime(2017, 1, 1, 12, 32, 45))
+    assert bytes(d()) == b"(D:20170101123245)"
+
+def test_InfoObject():
+    io = pdf_write.InfoObject("My Title")
+    dic = io.object().data
+    assert set(bytes(x) for x in dic) == {b"/Title", b"/CreationDate"}
+    assert dic[pdf.PDFName("Title")] == pdf.PDFString("My Title")
+
 def test_ProcedureSet():
     ps = pdf_write.ProcedureSet()
     assert bytes(ps.object().data) == b"[/PDF /Text /ImageB /ImageC /ImageI]"
@@ -100,3 +111,27 @@ def test_ImageScale():
 def test_ImageDrawer():
     idd = pdf_write.ImageDrawer([pdf_write.ImageScale(2.5, 10)], "Im0")
     assert bytes(idd.object().data) == b"<</Length 29>>\nstream\nq\n2.5 0 0 10 0 0 cm\n/Im0 Do\nQ\nendstream"
+
+def test_PDFWriter():
+    pw = pdf_write.PDFWriter()
+    
+    font = pdf.PDFSimpleDict()
+    font["Type"] = "Font"
+    font["Subtype"] = "Type1"
+    font["Name"] = "F1"
+    font["BaseFont"] = "Helvetica"
+    font["Encoding"] = "MaxRomanEncoding"
+    font = pw.add_pdf_object(font.to_dict())
+    resources = pdf.PDFSimpleDict()
+    proc_set = pw.add_pdf_object(pdf_write.ProcedureSet().object())
+    resources["ProcSet"] = proc_set
+    resources["Font"] = pdf.PDFDictionary([(pdf.PDFName("F1"), font)])
+    resources = resources.to_dict()
+    data = b"BT\n/F1 24 Tf\n100 100 Td\n(Hello World) Tj\nET"
+    contents = pdf.PDFStream([(pdf.PDFName("Length"), pdf.PDFNumeric(len(data)))], data)
+    contents = pw.add_pdf_object(contents)
+    page = pdf_write.Page(pdf_write.Rectangle(0, 0, 612, 792), resources, contents)
+
+    pw.add_page(page)
+
+    assert hashlib.sha256(bytes(pw)[:512]).hexdigest() == "6a585682ff6335644a4c94fcc1a955c33bf6ca977a5da16c6c2743518cb243b9"

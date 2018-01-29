@@ -6,6 +6,8 @@ Supports writing (simple) PDF files.
 """
 
 from .pdf import *
+import datetime as _datetime
+import hashlib as _hashlib
 
 class DocumentEntity():
     """Base class for each typed document member."""
@@ -19,10 +21,11 @@ class DocumentEntity():
 class DocumentCatalog(DocumentEntity):
     """The root document object, giving details about the pages.
     
-    :param page_object: 
+    :param page_tree_object: Instance of :class:`PageTree` describing the
+      (main) page tree.
     """
-    def __init__(self, page_object):
-        self._page_object = page_object
+    def __init__(self, page_tree_object):
+        self._page_object = page_tree_object
 
     def object(self):
         out = PDFSimpleDict()
@@ -59,7 +62,7 @@ class PageTree(DocumentEntity):
 
 
 class Page(DocumentEntity):
-    """An individual page.  Designed, for now, just for images.
+    """An individual page.  Designed mainly for images.
     
     :param mediabox: A :class:`Rectangle` instance of the bounding box of the
       media.
@@ -93,6 +96,27 @@ class Page(DocumentEntity):
         self._object.data = out.to_dict()
         return self._object
         
+
+class InfoObject(DocumentEntity):
+    """A PDF Info object.
+
+    :param title: The title of the PDF file.
+    """
+    def __init__(self, title):
+        self._title = title
+        self._others = []
+
+    def add_entry(self, name, value):
+        """Add an entry to the info object."""
+        self._others.append( (name, value) )
+
+    def object(self):
+        out = PDFSimpleDict()
+        out["Title"] = PDFString(self._title.encode())
+        dt = DateTime(_datetime.datetime.now())
+        out["CreationDate"] = dt()
+        return PDFObject(out.to_dict())
+
 
 class ColourSpace():
     """The colour spaces we support."""
@@ -214,7 +238,6 @@ class ImageDrawer(DocumentEntity):
 
 class ProcedureSet(DocumentEntity):
     """Although depricated, it is still recommended to include these.
-    TODO: I wonder if this matters at all???
     """
     def __init__(self):
         self._sets = ["PDF", "Text", "ImageB", "ImageC", "ImageI"]
@@ -242,4 +265,117 @@ class Rectangle(CommonDataStructure):
         return PDFArray([PDFNumeric(x) for x in coords])
 
 
+class DateTime(CommonDataStructure):
+    """A PDF datetime string.  Does not currently support time zones.
     
+    :param dt: A Pyhton :class:`datetime.datetime` object, or an object with
+      a similar interface.
+    """
+    def __init__(self, dt):
+        self._dt = dt
+
+    def __call__(self):
+        fields = [("year", "{:04}"), ("month", "{:02}"), ("day", "{:02}"),
+                ("hour", "{:02}"), ("minute", "{:02}"), ("second", "{:02}")
+                ]
+        out = b"D:"
+        for field, fmt in fields:
+            if hasattr(self._dt, field):
+                x = int(getattr(self._dt, field))
+                out += fmt.format(x).encode()
+            else:
+                break
+        return PDFString(out)
+
+
+class PDFWriter():
+    """Write PDF files.  Usage:
+      - Call :meth:`add_page` repeatedly to add pages
+      - Call :meth:`add_pdf_object` to add any extra objects
+
+    Then convert to `bytes` to get a fully-formed PDF file!    
+    """
+    def __init__(self):
+        self._pages = []
+        self._objs = []
+        self._info = InfoObject("None")
+
+    def add_page(self, page):
+        """Add a :class:`Page` object."""
+        self._pages.append(page)
+
+    def add_pdf_object(self, obj):
+        """Add a :class:`PDFObject` object, or other object to be wrapped
+        as a full object.
+
+        :param obj: :class:`PDFObject` instance, or another class to be
+          make into a :class:`PDFObject` instance.
+
+        :return: The object, made into a :class:`PDFObject` instance if
+          necessary.
+        """
+        if not isinstance(obj, PDFObject):
+            obj = PDFObject(obj)
+        self._objs.append(obj)
+        return obj
+
+    def set_info_object(self, info):
+        """Set the :class:`InfoObject` instance."""
+        self._info = info
+
+    def _to_full_objects(self):
+        page_tree = PageTree()
+        for p in self._pages:
+            page_tree.add_page(p)
+        page_tree_obj = page_tree.object()
+        objs = [DocumentCatalog(page_tree_obj).object(), page_tree_obj]
+        self._root_object = objs[0]
+        for p in self._pages:
+            objs.append(p.object())
+        objs.extend(self._objs)
+        objs.append(self._info.object())
+        self._info_object = objs[-1]
+
+        for num, obj in enumerate(objs):
+            obj.number = num + 1
+            obj.generation = 0
+        return objs
+
+    def _obj_marker(self, obj):
+        return "{} {} obj".format(obj.number, obj.generation).encode()
+
+    def _make_trailer(self, object_count, hash_data):
+        out = b"trailer\n"
+        trailer = PDFSimpleDict()
+        trailer["Size"] = object_count
+        trailer["Root"] = self._root_object
+        trailer["Info"] = self._info_object
+        h = _hashlib.md5(hash_data).digest()
+        trailer["ID"] = PDFArray([PDFString(h), PDFString(h)])
+        out += bytes(trailer.to_dict()) + b"\n"
+        return out
+
+    def __bytes__(self):
+        out = b"%PDF-1.4\n"
+
+        offsets = dict()
+        all_objects = self._to_full_objects()
+        for obj in all_objects:
+            offsets[obj.number] = len(out)
+            out += self._obj_marker(obj) + b"\n"
+            out += bytes(obj.data) + b"\n"
+            out += b"endobj\n"
+        offsets = list(offsets.items())
+        offsets.sort(key = lambda pr : pr[0])
+        offsets = [v for k, v in offsets]
+
+        start_xref = len(out)
+        out += "xref\n0 {}\n".format(len(offsets) + 1).encode()
+        out += b"0000000000 65535 f \n"
+        for off in offsets:
+            out += "{:010} 00000 n \n".format(off).encode()
+        
+        out += self._make_trailer(len(offsets) + 1, out)
+
+        out += "startxref\n{}\n%%EOF\n".format(start_xref).encode()
+        return out
