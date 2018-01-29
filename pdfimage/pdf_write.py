@@ -197,8 +197,10 @@ class ImageDictionary(DocumentEntity):
             out["Filter"] = self._filter
         out["Length"] = len(self._data)
         if self._params is not None:
+            params = PDFSimpleDict()
             for k, v in self._params.items():
-                out[k] = v
+                params[k] = v
+            out["DecodeParms"] = params.to_dict()
         stream = PDFStream(out.to_dict().items(), self._data)
         return PDFObject(stream)
 

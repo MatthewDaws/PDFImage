@@ -6,6 +6,8 @@ pdf_image.py
 
 from . import pdf_write
 from . import pdf
+import zlib as _zlib
+from . import png as _png
 
 class PDFImage():
     """Constructs single pages of PDF files using images.  Base class which is
@@ -108,16 +110,6 @@ class PDFImage():
         return PDFImageParts(page, objects)
 
 
-class UncompressedImage(PDFImage):
-    """Mainly for testing; no compression."""
-    def __init__(self, image, proc_set_object=None):
-        super().__init__(image, proc_set_object)
-
-    def _get_filtered_data(self):
-        data = self._image.tobytes()
-        return None, data, None
-
-
 class PDFImageParts():
     """Container for the output of encoding an image."""
     def __init__(self, page, objects):
@@ -140,3 +132,61 @@ class PDFImageParts():
         pdf_writer.add_page(self.page)
         for obj in self.objects:
             pdf_writer.add_pdf_object(obj)
+
+
+class UncompressedImage(PDFImage):
+    """Mainly for testing; no compression."""
+    def __init__(self, image, proc_set_object=None):
+        super().__init__(image, proc_set_object)
+
+    def _get_filtered_data(self):
+        data = self._image.tobytes()
+        return None, data, None
+
+
+class FlateImage(PDFImage):
+    """Use "Flate" compression; same as PNG without any "predictor"."""
+    def __init__(self, image, proc_set_object=None):
+        super().__init__(image, proc_set_object)
+
+    def _get_filtered_data(self):
+        data = self._image.tobytes()
+        return "FlateDecode", _zlib.compress(data, level=9), None
+
+
+class PNGImage(PDFImage):
+    """Use PNG compression."""
+    def __init__(self, image, proc_set_object=None):
+        super().__init__(image, proc_set_object)
+
+    def _get_filtered_data(self):
+        params = {"Predictor": 15, "Columns": self._image.width}
+        if self._image.mode == "RGB":
+            params["Colors"] = 3
+        elif self._image.mode == "L":
+            params["Colors"] = 1
+        else:
+            raise ValueError("Mode {} not supported for PNG".format(self._image.mode))
+
+        data = _zlib.compress(_png.png_heuristic_predictor(self._image), level=9)
+
+        return "FlateDecode", data, params
+
+
+class TIFFImage(PDFImage):
+    """Use TIFF compression.  Usually PNG is still optimal."""
+    def __init__(self, image, proc_set_object=None):
+        super().__init__(image, proc_set_object)
+
+    def _get_filtered_data(self):
+        params = {"Predictor": 2, "Columns": self._image.width}
+        if self._image.mode == "RGB":
+            params["Colors"] = 3
+        elif self._image.mode == "L":
+            params["Colors"] = 1
+        else:
+            raise ValueError("Mode {} not supported for PNG".format(self._image.mode))
+
+        data = _zlib.compress(_png.tiff_predictor(self._image), level=9)
+
+        return "FlateDecode", data, params

@@ -234,24 +234,18 @@ class PNGFast(PNG):
         cmask = (~amask) & (~bmask)
         return a * amask + b * bmask + c * cmask
 
+def png_heuristic_predictor(image):
+    out = array.array("B")
+    png = PNGFast(image)
+    for row in range(image.height):
+        filter_num, data = png.png_predict(row, PNGPredictor.heuristic)
+        out.append( filter_num )
+        out.extend( data )
+    return bytes(out)
 
-
-def objects_from_image(xobj_lookup, contents, width, height, xres, yres, dpi):
-    xobj_lookup['Type'] = '/XObject'
-    xobj_lookup['Subtype'] = '/Image'
-    xobj_lookup['Width'] = str(width)
-    xobj_lookup['Height'] = str(height)
-    xobj = pdf.OutObject(lookup = xobj_lookup, stream = contents, id_num=pdf.Reference(-1))
-    xobj_ref = pdf.CallToBytes(lambda : '<< /Im1 {} 0 R >>'.format(xobj.id_num).encode())
-    size_stream = "q {} 0 0 {} 0 0 cm /Im1 Do Q".format(float(width * dpi) / xres, float(height * dpi) / yres)
-    size = pdf.OutObject(stream = size_stream.encode(), id_num=pdf.Reference(-1))
-    resource_lookup = { 'ProcSet': '[/PDF /ImageI]',
-                        'XObject': xobj_ref }
-    resources = pdf.OutObject(lookup = resource_lookup, id_num=pdf.Reference(-1))
-    page_data_lookup = {'Type': '/Page',
-            'Parent': '3 0 R',  # Assumes pages in position 3
-            'MediaBox': '[ 0 0 {} {} ]'.format(float(width * dpi) / xres, float(height * dpi) / yres),
-            'Contents': pdf.Reference(size.id_num),
-            'Resources': pdf.Reference(resources.id_num) }
-    page_data = pdf.OutObject(lookup = page_data_lookup, id_num=pdf.Reference(-1))
-    return [ xobj, size, resources, page_data ]
+def tiff_predictor(image):
+    out = array.array("B")
+    png = PNGFast(image)
+    for row in range(image.height):
+        out.extend( png.png_predict(row, PNGPredictor.sub) )
+    return bytes(out)
