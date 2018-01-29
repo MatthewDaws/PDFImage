@@ -175,7 +175,8 @@ class ImageDictionary(DocumentEntity):
     def add_filtered_data(self, filter_name_string, data, parameters=None):
         """Add the actual data, encoded using the given filter name.
         
-        :param filter_name_string: String of the filter name used.
+        :param filter_name_string: String of the filter name used.  May be
+          `None` to indicate no filter.
         :param data: Bytes object of the encoded data.
         :param parameters: Optional Python dictionary from strings to integers
           (or string to PDFObject) giving needed parameters for the filter.
@@ -192,12 +193,14 @@ class ImageDictionary(DocumentEntity):
         out["ColorSpace"] = self._cs()
         out["BitsPerComponent"] = self._bpc
         out["Interpolate"] = PDFBoolean(self._interpolate)
-        out["Filter"] = self._filter
+        if self._filter is not None:
+            out["Filter"] = self._filter
         out["Length"] = len(self._data)
         if self._params is not None:
             for k, v in self._params.items():
                 out[k] = v
-        return PDFStream(out.to_dict().items(), self._data)
+        stream = PDFStream(out.to_dict().items(), self._data)
+        return PDFObject(stream)
 
 
 class ImageTransformation():

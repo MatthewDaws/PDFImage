@@ -5,6 +5,7 @@ __pycache__
 build
 dist
 .ipynb_check*
+test_outputs
 
 PDFReference.pdf
 PDF14errata.txt

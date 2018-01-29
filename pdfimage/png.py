@@ -9,7 +9,6 @@ import PIL.Image
 import zlib, enum, array
 import numpy as np
 
-
 class PNGPredictor(enum.Enum):
     """The different PNG "predictors" or "filters".  See for example:
       - https://en.wikipedia.org/wiki/Portable_Network_Graphics#Filtering
@@ -236,12 +235,6 @@ class PNGFast(PNG):
         return a * amask + b * bmask + c * cmask
 
 
-class PDFImage():
-    """Constructs single pages of PDF files using images.
-    Base class which is extended to implement specific compression
-    algorithms.
-    """
-    pass
 
 def objects_from_image(xobj_lookup, contents, width, height, xres, yres, dpi):
     xobj_lookup['Type'] = '/XObject'

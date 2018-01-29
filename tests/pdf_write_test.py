@@ -2,7 +2,7 @@ import pytest
 
 import pdfimage.pdf_write as pdf_write
 import pdfimage.pdf as pdf
-import datetime, hashlib
+import datetime, hashlib, os
 
 def test_DocumentCatalog():
     pages = pdf.PDFObjectId(5, 2)
@@ -102,7 +102,7 @@ def test_ImageDictionary():
     assert dic[pdf.PDFName("Interpolate")] == pdf.PDFBoolean(True)
     assert dic[pdf.PDFName("Predictor")] == pdf.PDFNumeric(5)
 
-    assert obj.stream_contents == b"1234"
+    assert obj.data.stream_contents == b"1234"
 
 def test_ImageScale():
     ims = pdf_write.ImageScale(2.5, 10)
@@ -112,7 +112,15 @@ def test_ImageDrawer():
     idd = pdf_write.ImageDrawer([pdf_write.ImageScale(2.5, 10)], "Im0")
     assert bytes(idd.object().data) == b"<</Length 29>>\nstream\nq\n2.5 0 0 10 0 0 cm\n/Im0 Do\nQ\nendstream"
 
-def test_PDFWriter():
+@pytest.fixture
+def test_output_dir():
+    try:
+        os.mkdir("test_outputs")
+    except:
+        pass
+    return "test_outputs"
+
+def test_PDFWriter(test_output_dir):
     pw = pdf_write.PDFWriter()
     
     font = pdf.PDFSimpleDict()
@@ -135,3 +143,6 @@ def test_PDFWriter():
     pw.add_page(page)
 
     assert hashlib.sha256(bytes(pw)[:512]).hexdigest() == "6a585682ff6335644a4c94fcc1a955c33bf6ca977a5da16c6c2743518cb243b9"
+
+    with open(os.path.join(test_output_dir, "text.pdf"), "wb") as f:
+        f.write(bytes(pw))
