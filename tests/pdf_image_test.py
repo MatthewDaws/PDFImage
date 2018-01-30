@@ -68,3 +68,84 @@ def test_UncompressedImage_bw(blackwhite_image, test_output_dir):
     parts.add_to_pdf_writer(writer)
     with open(os.path.join(test_output_dir, "uncompressed_image_bw.pdf"), "wb") as f:
         f.write(bytes(writer))
+
+def test_UncompressedImage_combine(grey_image, palette_image, blackwhite_image, test_output_dir):
+    writer = pdf_write.PDFWriter()
+
+    parts = pdf_image.UncompressedImage(palette_image)()
+    parts.add_to_pdf_writer(writer)
+    parts = pdf_image.UncompressedImage(grey_image)()
+    parts.add_to_pdf_writer(writer)
+    parts = pdf_image.UncompressedImage(blackwhite_image)()
+    parts.add_to_pdf_writer(writer)
+
+    with open(os.path.join(test_output_dir, "uncompressed_three_up.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+@pytest.fixture
+def rgb_image():
+    filename = os.path.join("tests", "data", "22.jpg")
+    return PIL.Image.open(filename)
+
+def test_UncompressedImage_rgb(rgb_image, test_output_dir):
+    image = pdf_image.UncompressedImage(rgb_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "uncompressed_image_rgb.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_FlateImage_rgb(rgb_image, test_output_dir):
+    image = pdf_image.FlateImage(rgb_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "flate_image_rgb.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_FlateImage(grey_image, test_output_dir):
+    image = pdf_image.FlateImage(grey_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "flate_image_grey.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_PNGImage(grey_image, test_output_dir):
+    image = pdf_image.PNGImage(grey_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "png_image_grey.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_PNGImage_RGB(rgb_image, test_output_dir):
+    image = pdf_image.PNGImage(rgb_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "png_image_rgb.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_TIFFImage(grey_image, test_output_dir):
+    image = pdf_image.TIFFImage(grey_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "tiff_image_grey.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_TIFFImage_RGB(rgb_image, test_output_dir):
+    image = pdf_image.TIFFImage(rgb_image)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "tiff_image_rgb.pdf"), "wb") as f:
+        f.write(bytes(writer))

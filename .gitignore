@@ -6,6 +6,7 @@ build
 dist
 .ipynb_check*
 test_outputs
+agl-jbig2enc
 
 PDFReference.pdf
 PDF14errata.txt

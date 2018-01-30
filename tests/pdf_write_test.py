@@ -91,7 +91,7 @@ def test_ImageDictionary():
     dic = obj.data
     assert set(bytes(x) for x in dic) == {b"/Subtype", b"/Filter", b"/Width",
         b"/Height", b"/ColorSpace", b"/BitsPerComponent", b"/Length",
-        b"/Interpolate", b"/Predictor"}
+        b"/Interpolate", b"/DecodeParms"}
     assert dic[pdf.PDFName("Subtype")] == pdf.PDFName("Image")
     assert dic[pdf.PDFName("Filter")] == pdf.PDFName("FlateDecode")
     assert dic[pdf.PDFName("Width")] == pdf.PDFNumeric(1024)
@@ -100,7 +100,8 @@ def test_ImageDictionary():
     assert dic[pdf.PDFName("BitsPerComponent")] == pdf.PDFNumeric(8)
     assert dic[pdf.PDFName("Length")] == pdf.PDFNumeric(4)
     assert dic[pdf.PDFName("Interpolate")] == pdf.PDFBoolean(True)
-    assert dic[pdf.PDFName("Predictor")] == pdf.PDFNumeric(5)
+    #assert dic[pdf.PDFName("Predictor")] == pdf.PDFNumeric(5)
+    assert bytes(dic[pdf.PDFName("DecodeParms")]) == b"<</Predictor 5>>"
 
     assert obj.data.stream_contents == b"1234"
 
