@@ -17,11 +17,13 @@ class JBIG2Compressor():
 
     :param jbig2_exe_path: The path to the "jbig2.exe" excutable.  Or `None` to
       use the default.
+    :param oversample: Can be 1, 2 or 4.  Upsample by this amount before making b/w.
     """
-    def __init__(self, jbig2_exe_path=None):
+    def __init__(self, jbig2_exe_path=None, oversample=2):
         if jbig2_exe_path is None:
             jbig2_exe_path = _default_jbig2_exe
         self._jbig2_exe_path = jbig2_exe_path
+        self._upsample = oversample
 
     def call(self, args):
         return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -29,7 +31,16 @@ class JBIG2Compressor():
     def encode(self, files):
         """Will generate `output.sym` and `output.0000`, `output.0001` etc.
         in the current directory."""
-        result = self.call([self._jbig2_exe_path, "-s", "-p", "-2", "-v"] + list(files))
+        args = [self._jbig2_exe_path, "-s", "-p", "-v"]
+        if self._upsample == 1:
+            pass
+        elif self._upsample == 2:
+            args += ["-2"]
+        elif self._upsample == 4:
+            args += ["-4"]
+        else:
+            raise ValueError("{} is not supported for over-sampling".format(self._upsample))
+        result = self.call(args + list(files))
         assert result.returncode == 0
         return result
 
@@ -45,9 +56,10 @@ class JBIG2CompressorToZip():
       the current directory.
     :param temporary_directory: The directory to write temporary files to, or
       `None` to auto-generated one (and delete at the end).
+    :param oversample: Can be 1, 2 or 4.  Upsample by this amount before making b/w.
     """
     def __init__(self, output_filename, jbig2_exe_path=None, input_directory=None,
-            temporary_directory=None):
+            temporary_directory=None, oversample=2):
         if jbig2_exe_path is None:
             jbig2_exe_path = _default_jbig2_exe
         self._jbig2_exe_path = os.path.abspath(jbig2_exe_path)
@@ -55,6 +67,7 @@ class JBIG2CompressorToZip():
         self._in_dir = input_directory
         self._temp_dir = temporary_directory
         self._out_file = os.path.abspath(output_filename)
+        self._upsample = oversample
 
     def _random_dir_name(self):
         return "".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(8))
@@ -88,18 +101,7 @@ class JBIG2CompressorToZip():
             os.mkdir(self._temp_dir)
             os.chdir(self._temp_dir)
 
-    def encode(self, files):
-        """Encode the files, all to be found in the input directory."""
-        if self._in_dir is not None:
-            files = [os.path.join(self._in_dir, x) for x in files]
-        files = [os.path.abspath(f) for f in files]
-
-        self._make_temp_dir()
-        result = self._call([self._jbig2_exe_path, "-s", "-p", "-2", "-v"] + list(files))
-        if not result.returncode == 0:
-            self._cleanup()
-            raise Exception("Failed to compress files", result)
-
+    def _write_zip_file(self):
         zf = zipfile.ZipFile(self._out_file, "w")
         try:
             files = list(os.listdir())
@@ -112,6 +114,29 @@ class JBIG2CompressorToZip():
             zf.close()
             self._cleanup()
 
+    def encode(self, files):
+        """Encode the files, all to be found in the input directory."""
+        if self._in_dir is not None:
+            files = [os.path.join(self._in_dir, x) for x in files]
+        files = [os.path.abspath(f) for f in files]
+
+        self._make_temp_dir()
+        args = [self._jbig2_exe_path, "-s", "-p", "-v", "-S"]
+        if self._upsample == 1:
+            pass
+        elif self._upsample == 2:
+            args += ["-2"]
+        elif self._upsample == 4:
+            args += ["-4"]
+        else:
+            raise ValueError("{} is not supported for over-sampling".format(self._upsample))
+        result = self._call(args + list(files))
+        if not result.returncode == 0:
+            self._cleanup()
+            raise Exception("Failed to compress files", result)
+        
+        self._write_zip_file()
+
 
 class ImageFacade():
     pass
@@ -119,9 +144,9 @@ class ImageFacade():
 
 class JBIG2Image(pdf_image.PDFImage):
     """Assemble a single jbig2 output file into a PDF file."""
-    def __init__(self, jbig2globals_object, file, proc_set_object):
+    def __init__(self, jbig2globals_object, file, proc_set_object, dpi=1):
         self._file = file
-        super().__init__(self._image(), proc_set_object)
+        super().__init__(self._image(), proc_set_object, dpi)
         self._jbig2globals_object = jbig2globals_object
 
     def _read_file(self):
@@ -142,7 +167,7 @@ class JBIG2Image(pdf_image.PDFImage):
         image.mode = "1"
         return image
 
-    def _get_filtered_data(self):
+    def _get_filtered_data(self, image):
         params = {"JBIG2Globals" : self._jbig2globals_object}
         data = self._read_file()
         return "JBIG2Decode", data, params
@@ -178,8 +203,9 @@ class JBIG2Images():
     
     :param zipfilename: The ZIP file to look at for data.
     """
-    def __init__(self, zipfilename):
+    def __init__(self, zipfilename, dpi=1):
         self._objects = []
+        self._dpi = dpi
         zf = zipfile.ZipFile(zipfilename, "r")
         try:
             self._add_globals(zf)
@@ -205,7 +231,7 @@ class JBIG2Images():
             if len(choices) == 0:
                 break
             with zf.open(choices[0]) as file:
-                parts = JBIG2Image(self._jb2_globals, file, self._proc_set_object)()
+                parts = JBIG2Image(self._jb2_globals, file, self._proc_set_object, self._dpi)()
             pages.append(parts.page)
             objects.extend(parts.objects)
             page_number += 1

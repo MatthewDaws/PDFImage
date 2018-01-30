@@ -12,7 +12,7 @@ def test_JBIG2Compressor(mock_runner):
     result = compressor.encode(["file1.png", "file2.jpg"])
 
     assert result is mock_runner.return_value
-    expected_args = [jb2._default_jbig2_exe, "-s", "-p", "-2", "-v", "file1.png", "file2.jpg"]
+    expected_args = [jb2._default_jbig2_exe, "-s", "-p", "-v", "-2", "file1.png", "file2.jpg"]
     mock_runner.assert_called_once_with(expected_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     mock_runner.return_value.returncode = 1
@@ -25,7 +25,7 @@ def test_JBIG2Compressor_with_path(mock_runner):
     mock_runner.return_value.returncode = 0
     result = compressor.encode(["file1.png", "file2.jpg"])
 
-    expected_args = ["test.exe", "-s", "-p", "-2", "-v", "file1.png", "file2.jpg"]
+    expected_args = ["test.exe", "-s", "-p", "-v", "-2", "file1.png", "file2.jpg"]
     mock_runner.assert_called_once_with(expected_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 @pytest.fixture

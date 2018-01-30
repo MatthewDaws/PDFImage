@@ -171,6 +171,15 @@ class ImageDictionary(DocumentEntity):
         self._cs = colour_space
         self._bpc = bits
         self._interpolate = interpolate
+        self._extra_entries = dict()
+
+    def add_dictionary_entry(self, key, value):
+        """Add an extra entry to the dictionary.
+
+        :param key: String
+        :param value: PDF object or a type accepted by :class:`PDFSimpleDict`
+        """
+        self._extra_entries[key] = value
 
     def add_filtered_data(self, filter_name_string, data, parameters=None):
         """Add the actual data, encoded using the given filter name.
@@ -201,6 +210,8 @@ class ImageDictionary(DocumentEntity):
             for k, v in self._params.items():
                 params[k] = v
             out["DecodeParms"] = params.to_dict()
+        for k, v in self._extra_entries.items():
+            out[k] = v
         stream = PDFStream(out.to_dict().items(), self._data)
         return PDFObject(stream)
 
@@ -221,6 +232,16 @@ class ImageScale(ImageTransformation):
         return "{} 0 0 {} 0 0 cm".format(self._x, self._y)
 
 
+class ImageTranslation(ImageTransformation):
+    """Translate an image."""
+    def __init__(self, x=0, y=0):
+        self._x = x
+        self._y = y
+
+    def __call__(self):
+        return "1 0 0 1 {} {} cm".format(self._x, self._y)
+
+
 class ImageDrawer(DocumentEntity):
     """The object which transforms and draws the image.  Will be the "contents"
     of a page.
@@ -232,11 +253,16 @@ class ImageDrawer(DocumentEntity):
         self._trans = transformations
         self._image_name = image_name
 
-    def object(self):
+    def make_stream(self):
+        """Make the raw stream; useful for combining more than one drawing
+        command in a single PDF object."""
         data = [b"q"] + [x().encode() for x in self._trans]
         data.append(bytes(PDFName(self._image_name)) + b" Do")
         data.append(b"Q")
-        data = b"\n".join(data)
+        return b"\n".join(data)
+
+    def object(self):
+        data = self.make_stream()
         obj = PDFStream([(PDFName("Length"), PDFNumeric(len(data)))], data)
         return PDFObject(obj)
 

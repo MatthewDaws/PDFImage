@@ -86,12 +86,13 @@ def test_ImageDictionary():
     im = pdf_write.ImageDictionary(width=1024, height=768,
         colour_space=pdf_write.ColourSpaceRGB(), bits=8)
     im.add_filtered_data("FlateDecode", b"1234", {"Predictor": 5})
+    im.add_dictionary_entry("matt", 7)
     
     obj = im.object()
     dic = obj.data
     assert set(bytes(x) for x in dic) == {b"/Subtype", b"/Filter", b"/Width",
         b"/Height", b"/ColorSpace", b"/BitsPerComponent", b"/Length",
-        b"/Interpolate", b"/DecodeParms"}
+        b"/Interpolate", b"/DecodeParms", b"/matt"}
     assert dic[pdf.PDFName("Subtype")] == pdf.PDFName("Image")
     assert dic[pdf.PDFName("Filter")] == pdf.PDFName("FlateDecode")
     assert dic[pdf.PDFName("Width")] == pdf.PDFNumeric(1024)
@@ -100,7 +101,7 @@ def test_ImageDictionary():
     assert dic[pdf.PDFName("BitsPerComponent")] == pdf.PDFNumeric(8)
     assert dic[pdf.PDFName("Length")] == pdf.PDFNumeric(4)
     assert dic[pdf.PDFName("Interpolate")] == pdf.PDFBoolean(True)
-    #assert dic[pdf.PDFName("Predictor")] == pdf.PDFNumeric(5)
+    assert dic[pdf.PDFName("matt")] == pdf.PDFNumeric(7)
     assert bytes(dic[pdf.PDFName("DecodeParms")]) == b"<</Predictor 5>>"
 
     assert obj.data.stream_contents == b"1234"
@@ -108,6 +109,10 @@ def test_ImageDictionary():
 def test_ImageScale():
     ims = pdf_write.ImageScale(2.5, 10)
     assert ims() == "2.5 0 0 10 0 0 cm"
+
+def test_ImageTranslation():
+    ims = pdf_write.ImageTranslation(2.5, 10)
+    assert ims() == "1 0 0 1 2.5 10 cm"
 
 def test_ImageDrawer():
     idd = pdf_write.ImageDrawer([pdf_write.ImageScale(2.5, 10)], "Im0")
