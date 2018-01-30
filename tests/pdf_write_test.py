@@ -143,7 +143,5 @@ def test_PDFWriter(test_output_dir):
 
     pw.add_page(page)
 
-    assert hashlib.sha256(bytes(pw)[:512]).hexdigest() == "6a585682ff6335644a4c94fcc1a955c33bf6ca977a5da16c6c2743518cb243b9"
-
     with open(os.path.join(test_output_dir, "text.pdf"), "wb") as f:
         f.write(bytes(pw))

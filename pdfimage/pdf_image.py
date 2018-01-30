@@ -151,7 +151,7 @@ class FlateImage(PDFImage):
 
     def _get_filtered_data(self):
         data = self._image.tobytes()
-        return "FlateDecode", _zlib.compress(data, level=9), None
+        return "FlateDecode", _zlib.compress(data, 9), None
 
 
 class PNGImage(PDFImage):
@@ -168,7 +168,7 @@ class PNGImage(PDFImage):
         else:
             raise ValueError("Mode {} not supported for PNG".format(self._image.mode))
 
-        data = _zlib.compress(_png.png_heuristic_predictor(self._image), level=9)
+        data = _zlib.compress(_png.png_heuristic_predictor(self._image), 9)
 
         return "FlateDecode", data, params
 
@@ -187,6 +187,6 @@ class TIFFImage(PDFImage):
         else:
             raise ValueError("Mode {} not supported for PNG".format(self._image.mode))
 
-        data = _zlib.compress(_png.tiff_predictor(self._image), level=9)
+        data = _zlib.compress(_png.tiff_predictor(self._image), 9)
 
         return "FlateDecode", data, params
