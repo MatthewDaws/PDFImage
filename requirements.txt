@@ -1,0 +1,8 @@
+# Only for testing
+pytest
+codecov
+pytest-cov
+
+# Needed for library to work
+numpy
+pillow
