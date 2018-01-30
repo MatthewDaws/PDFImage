@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/MatthewDaws/PDFImage.svg?branch=master)](https://travis-ci.org/MatthewDaws/PDFImage)
+
 # PDFImage
 
 A simple, pure python library, for reading the raw contents of PDF files and writing PDF files composed of images, e.g. from scanned images.
