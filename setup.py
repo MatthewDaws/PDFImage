@@ -25,9 +25,9 @@ setup(
     license = 'MIT',
     keywords = [],
     classifiers = [
-        "Development Status :: 3 - Alpha",
-        #"License :: OSI Approved :: Artistic License",
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3 :: Only",
-        #"Topic :: Scientific/Engineering :: GIS"
+        "Topic :: Multimedia :: Graphics :: Graphics Conversion"
     ]
 )

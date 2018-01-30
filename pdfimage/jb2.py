@@ -2,9 +2,10 @@
 jb2.py
 ~~~~~~
 
+Use JBIG2, and an external compressor, for black and white images.
 """
 
-import os, sys, subprocess, struct, zipfile
+import os, sys, subprocess, struct, zipfile, random
 from . import pdf_image
 from . import pdf_write
 from . import pdf
@@ -31,6 +32,85 @@ class JBIG2Compressor():
         result = self.call([self._jbig2_exe_path, "-s", "-p", "-2", "-v"] + list(files))
         assert result.returncode == 0
         return result
+
+
+class JBIG2CompressorToZip():
+    """A higher-level version of :class:`JBIG2Compressor` which takes care of
+    temporary output directories, and zipping the result.
+
+    :param output_filename: The filename to write the ZIP file to.
+    :param jbig2_exe_path: The path to the "jbig2.exe" excutable.  Or `None` to
+      use the default.
+    :param input_directory: The directory to find input files in, or `None` for
+      the current directory.
+    :param temporary_directory: The directory to write temporary files to, or
+      `None` to auto-generated one (and delete at the end).
+    """
+    def __init__(self, output_filename, jbig2_exe_path=None, input_directory=None,
+            temporary_directory=None):
+        if jbig2_exe_path is None:
+            jbig2_exe_path = _default_jbig2_exe
+        self._jbig2_exe_path = os.path.abspath(jbig2_exe_path)
+
+        self._in_dir = input_directory
+        self._temp_dir = temporary_directory
+        self._out_file = os.path.abspath(output_filename)
+
+    def _random_dir_name(self):
+        return "".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(8))
+
+    def _call(self, args):
+        return subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def _cleanup(self):
+        if self._old_directory is not None:
+            os.chdir(self._old_directory)
+            return
+        files = list(os.listdir())
+        for f in files:
+            try:
+                os.remove(f)
+            except:
+                pass
+        os.chdir("..")
+        try:
+            os.rmdir(self._temp_dir)
+        except:
+            pass
+
+    def _make_temp_dir(self):
+        if self._temp_dir is not None:
+            self._old_directory = os.path.abspath(os.curdir)
+            os.chdir(self._temp_dir)
+        else:
+            self._old_directory = None
+            self._temp_dir = self._random_dir_name()
+            os.mkdir(self._temp_dir)
+            os.chdir(self._temp_dir)
+
+    def encode(self, files):
+        """Encode the files, all to be found in the input directory."""
+        if self._in_dir is not None:
+            files = [os.path.join(self._in_dir, x) for x in files]
+        files = [os.path.abspath(f) for f in files]
+
+        self._make_temp_dir()
+        result = self._call([self._jbig2_exe_path, "-s", "-p", "-2", "-v"] + list(files))
+        if not result.returncode == 0:
+            self._cleanup()
+            raise Exception("Failed to compress files", result)
+
+        zf = zipfile.ZipFile(self._out_file, "w")
+        try:
+            files = list(os.listdir())
+            for f in files:
+                with open(f, "rb") as file:
+                    data = file.read()
+                with zf.open(f, "w") as file:
+                    file.write(data)
+        finally:
+            zf.close()
+            self._cleanup()
 
 
 class ImageFacade():
