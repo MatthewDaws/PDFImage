@@ -149,3 +149,43 @@ def test_TIFFImage_RGB(rgb_image, test_output_dir):
     parts.add_to_pdf_writer(writer)
     with open(os.path.join(test_output_dir, "tiff_image_rgb.pdf"), "wb") as f:
         f.write(bytes(writer))
+
+def test_Flate_Multiple_Image1(test_output_dir, rgb_image, blackwhite_image):
+    image = pdf_image.FlateMultiImage(blackwhite_image)
+    image.add_top_image(rgb_image, (10, 20), (50, 50))
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "multi_flate_1.pdf"), "wb") as f:
+        f.write(bytes(writer))
+    
+def test_Flate_Multiple_Image2(test_output_dir, rgb_image, blackwhite_image):
+    image = pdf_image.FlateMultiImage(rgb_image)
+    image.add_top_image(blackwhite_image, (10, 20), (80, 150))
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "multi_flate_2.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_Flate_Multiple_Image3(test_output_dir, rgb_image, blackwhite_image):
+    image = pdf_image.FlateMultiImage(rgb_image)
+    image.add_top_image(blackwhite_image, (10, 20), (80, 150), (1, 1))
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "multi_flate_3.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_Flate_Multiple_Image4(test_output_dir, rgb_image, grey_image):
+    image = pdf_image.FlateMultiImage(rgb_image)
+    image.add_top_image(grey_image, (10, 20), (80, 150), (200, 255))
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "multi_flate_4.pdf"), "wb") as f:
+        f.write(bytes(writer))

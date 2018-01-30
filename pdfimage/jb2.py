@@ -57,9 +57,11 @@ class JBIG2CompressorToZip():
     :param temporary_directory: The directory to write temporary files to, or
       `None` to auto-generated one (and delete at the end).
     :param oversample: Can be 1, 2 or 4.  Upsample by this amount before making b/w.
+    :param split: Should we ask `jbig2.exe` to attempt to split out PNG files of
+      graphics?  If so, `oversample==1` seems to be the only setting which works!
     """
     def __init__(self, output_filename, jbig2_exe_path=None, input_directory=None,
-            temporary_directory=None, oversample=2):
+            temporary_directory=None, oversample=2, split=False):
         if jbig2_exe_path is None:
             jbig2_exe_path = _default_jbig2_exe
         self._jbig2_exe_path = os.path.abspath(jbig2_exe_path)
@@ -68,6 +70,7 @@ class JBIG2CompressorToZip():
         self._temp_dir = temporary_directory
         self._out_file = os.path.abspath(output_filename)
         self._upsample = oversample
+        self._split = split
 
     def _random_dir_name(self):
         return "".join(random.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(8))
@@ -121,7 +124,9 @@ class JBIG2CompressorToZip():
         files = [os.path.abspath(f) for f in files]
 
         self._make_temp_dir()
-        args = [self._jbig2_exe_path, "-s", "-p", "-v", "-S"]
+        args = [self._jbig2_exe_path, "-s", "-p", "-v"]
+        if self._split:
+            args.append("-S")
         if self._upsample == 1:
             pass
         elif self._upsample == 2:

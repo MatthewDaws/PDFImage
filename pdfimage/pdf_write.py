@@ -201,7 +201,8 @@ class ImageDictionary(DocumentEntity):
         out["Height"] = self._size[1]
         out["ColorSpace"] = self._cs()
         out["BitsPerComponent"] = self._bpc
-        out["Interpolate"] = PDFBoolean(self._interpolate)
+        if self._interpolate:
+            out["Interpolate"] = PDFBoolean(self._interpolate)
         if self._filter is not None:
             out["Filter"] = self._filter
         out["Length"] = len(self._data)

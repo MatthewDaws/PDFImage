@@ -69,7 +69,7 @@ class PDFImage():
             image = image.convert("1")
         return image
 
-    def _make_one_xobject_dict(self, image):
+    def _make_one_xobject_dict(self, image, interpolate=True):
         if image.mode == "1":
             colour_space = pdf_write.ColourSpaceGrey()
             bpp = 1
@@ -95,7 +95,8 @@ class PDFImage():
             bpp = 8
         else:
             raise ValueError("Image mode {} not supported".format(image.mode))
-        imagedict = pdf_write.ImageDictionary(image.width, image.height, colour_space, bpp)
+        imagedict = pdf_write.ImageDictionary(image.width, image.height,
+                colour_space, bpp, interpolate=interpolate)
         imagedict.add_filtered_data(*self._get_filtered_data(image))
         return imagedict
 
@@ -163,6 +164,9 @@ class PDFMultipleImage(PDFImage):
     case is to combine a black+white image (highly compressed) with a colour
     image showing illustrations and photos, etc.
 
+    We support "chroma-key" masking.  Unfortunately, support in PDF readers
+    seems a little mixed, especially with black and white images...
+
     :param base_image: The :class:`PIL.Image` object to encode.
     :param proc_set_object: A :class:`PDFObject` pointing to the standard
       "Proc Set", or `None` to generate a new one.
@@ -209,7 +213,7 @@ class PDFMultipleImage(PDFImage):
     def _make_xobjects(self):
         xobjs = [self._make_one_xobject_dict(self._image).object()]
         for image, pos, size, mask in self._other_images:
-            image = self._make_one_xobject_dict(image)
+            image = self._make_one_xobject_dict(image, interpolate=False)
             if mask is not None:
                 image.add_dictionary_entry("Mask", pdf.PDFArray([pdf.PDFNumeric(x) for x in mask]))
             xobjs.append(image.object())
@@ -238,7 +242,7 @@ class FlateImage(PDFImage):
 
 class FlateMultiImage(PDFMultipleImage):
     """Flate compression of multiple images."""
-    def __init__(self, base_image, proc_set_object, base_scale=1):
+    def __init__(self, base_image, proc_set_object=None, base_scale=1):
         super().__init__(base_image, proc_set_object, base_scale)
 
     def _get_filtered_data(self, image):
