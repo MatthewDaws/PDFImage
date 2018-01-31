@@ -31,6 +31,7 @@ class PDFImage():
       size, which is typically too large.
     """
     def __init__(self, image, proc_set_object, dpi=1):
+        self._get_image_data = self._get_filtered_data
         self._image = self._adjust_bw_case(image)
         self._proc_set = proc_set_object
         self._dpi = dpi
@@ -97,7 +98,7 @@ class PDFImage():
             raise ValueError("Image mode {} not supported".format(image.mode))
         imagedict = pdf_write.ImageDictionary(image.width, image.height,
                 colour_space, bpp, interpolate=interpolate)
-        imagedict.add_filtered_data(*self._get_filtered_data(image))
+        imagedict.add_filtered_data(*self._get_image_data(image))
         return imagedict
 
     def _make_xobjects(self):
@@ -211,13 +212,21 @@ class PDFMultipleImage(PDFImage):
         return pdf.PDFObject(obj)
 
     def _make_xobjects(self):
+        self._get_image_data = self._get_filtered_data
         xobjs = [self._make_one_xobject_dict(self._image).object()]
+        self._get_image_data = self._get_top_filtered_data
         for image, pos, size, mask in self._other_images:
             image = self._make_one_xobject_dict(image, interpolate=False)
             if mask is not None:
                 image.add_dictionary_entry("Mask", pdf.PDFArray([pdf.PDFNumeric(x) for x in mask]))
             xobjs.append(image.object())
         return xobjs
+
+    def _get_top_filtered_data(self, image):
+        """Version of :meth:`_get_filtered_data` for the "top" images.
+        Default implementation is to call :meth:`_get_filtered_data`.
+        """
+        return self._get_filtered_data(image)
 
 
 class UncompressedImage(PDFImage):

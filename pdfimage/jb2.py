@@ -9,6 +9,7 @@ import os, sys, subprocess, struct, zipfile, random
 from . import pdf_image
 from . import pdf_write
 from . import pdf
+import PIL.Image as _PILImage
 
 _default_jbig2_exe = os.path.join(os.path.abspath(".."), "agl-jbig2enc", "jbig2.exe")
 
@@ -154,17 +155,21 @@ class JBIG2Image(pdf_image.PDFImage):
         super().__init__(self._image(), proc_set_object, dpi)
         self._jbig2globals_object = jbig2globals_object
 
+    @staticmethod
+    def read_file(file):
+        """Read binary data from a file or filename."""
+        if isinstance(file, str):
+            with open(file, "rb") as f:
+                return f.read()
+        return file.read()
+
     def _read_file(self):
         if not hasattr(self, "_file_cache"):
-            if isinstance(self._file, str):
-                with open(self._file, "rb") as f:
-                    self._file_cache = f.read()
-            else:
-                self._file_cache = self._file.read()
+            self._file_cache = self.read_file(self._file)
         return self._file_cache
 
-    def _image(self):
-        data = self._read_file()
+    @staticmethod
+    def load_jbig2(data):
         (width, height, xres, yres) = struct.unpack('>IIII', data[11:27])
         image = ImageFacade()
         image.width = width
@@ -172,10 +177,31 @@ class JBIG2Image(pdf_image.PDFImage):
         image.mode = "1"
         return image
 
+    def _image(self):
+        return self.load_jbig2(self._read_file())
+
     def _get_filtered_data(self, image):
         params = {"JBIG2Globals" : self._jbig2globals_object}
         data = self._read_file()
         return "JBIG2Decode", data, params
+
+
+class JBIG2PNGMultiImage(pdf_image.PDFMultipleImage):
+    """Combine a jbig2 image with a png image for graphics."""
+    def __init__(self, jbig2globals_object, file, proc_set_object, dpi=1):
+        self._jb2_data = JBIG2Image.read_file(file)
+        self._jb2png_proc_set_object = proc_set_object
+        self._jb2_image = JBIG2Image.load_jbig2(self._jb2_data)
+        super().__init__(self._jb2_image, proc_set_object, dpi)
+        self._jbig2globals_object = jbig2globals_object
+
+    def _get_filtered_data(self, image):
+        params = {"JBIG2Globals" : self._jbig2globals_object}
+        return "JBIG2Decode", self._jb2_data, params
+
+    def _get_top_filtered_data(self, image):
+        png_image = pdf_image.PNGImage(image, self._jb2png_proc_set_object)
+        return png_image._get_filtered_data(image)
 
 
 class JBIG2Output():
@@ -252,3 +278,43 @@ class JBIG2Images():
                 return
         raise ValueError("Could not find a symbol file.")
 
+
+class JBIG2MultiImages(JBIG2Images):
+    """As :class:`JBIG2Images` but supports blending in a PNG file.
+    
+    The input should be a ZIP file produced by :class:`JBIG2CompressorToZip`
+    with `oversample=1` and `split=True`.
+    """
+    def __init__(self, zipfilename, dpi=1):
+        super().__init__(zipfilename, dpi)
+
+    def _check_and_get_png(self, zf, basename):
+            try:
+                with zf.open(basename + ".png") as file:
+                    return _PILImage.open(file)
+            except KeyError:
+                return None
+
+    def _compile_pages(self, zf):
+        page_number = 0
+        pages = []
+        objects = []
+        while True:
+            ending = ".{:04}".format(page_number)
+            choices = [x for x in zf.filelist if x.filename.endswith(ending)]
+            if len(choices) == 0:
+                break
+            png_image = self._check_and_get_png(zf, choices[0].filename)
+            with zf.open(choices[0]) as file:
+                if png_image is None:
+                    parts = JBIG2Image(self._jb2_globals, file, self._proc_set_object, self._dpi)()
+                else:
+                    multi_image = JBIG2PNGMultiImage(self._jb2_globals, file, self._proc_set_object, self._dpi)
+                    multi_image.add_top_image(png_image, (0,0),
+                                        (png_image.width / self._dpi, png_image.height / self._dpi), (255,255)*3)
+                    parts = multi_image()
+            pages.append(parts.page)
+            objects.extend(parts.objects)
+            page_number += 1
+        return JBIG2Output(pages, objects)
+    

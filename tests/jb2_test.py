@@ -41,7 +41,7 @@ def jb2zip():
     return os.path.join("tests", "data", "jbig2.zip")
 
 def test_JBIG2Images(test_output_dir, jb2zip):
-    result = jb2.JBIG2Images(jb2zip).parts
+    result = jb2.JBIG2Images(jb2zip, dpi=8).parts
 
     writer = pdf_write.PDFWriter()
     result.add_to_pdf_writer(writer)

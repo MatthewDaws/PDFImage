@@ -6,6 +6,6 @@ from . import pdf_write
 
 from .pdf_image import UncompressedImage, FlateImage, PNGImage, TIFFImage
 
-from .jb2 import JBIG2Images, JBIG2CompressorToZip
+from .jb2 import JBIG2Images, JBIG2CompressorToZip, JBIG2MultiImages
 
 from .pdf_write import PDFWriter
