@@ -17,10 +17,6 @@ Pure python, with:
 
 ## Install
 
-Coming soon:
-
-    pip install tilemapbase
-
 Build from source:
 
     python setup.py install
