@@ -118,8 +118,13 @@ class JBIG2CompressorToZip():
             zf.close()
             self._cleanup()
 
-    def encode(self, files):
-        """Encode the files, all to be found in the input directory."""
+    def encode(self, files, threshold=None):
+        """Encode the files, all to be found in the input directory.
+        
+        :param files: The files to encode
+        :param threshold: If not `None`, then the level, between 0 and 255, to
+          use when converting to 1 bpp.
+        """
         if self._in_dir is not None:
             files = [os.path.join(self._in_dir, x) for x in files]
         files = [os.path.abspath(f) for f in files]
@@ -136,6 +141,8 @@ class JBIG2CompressorToZip():
             args += ["-4"]
         else:
             raise ValueError("{} is not supported for over-sampling".format(self._upsample))
+        if threshold is not None:
+            args += ["-T", str(int(threshold))]
         result = self._call(args + list(files))
         if not result.returncode == 0:
             self._cleanup()
