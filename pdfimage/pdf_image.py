@@ -8,6 +8,7 @@ Produce PDF pages based on images.
 from . import pdf_write
 from . import pdf
 import zlib as _zlib
+import io as _io
 from . import png as _png
 
 class PDFImage():
@@ -20,7 +21,7 @@ class PDFImage():
         :class:`pdf_write.ImageDictionary` instance
       - The instructions, in PDF syntax, for drawing the image.  We use
         :class:`pdf_write.ImageDrawer`
-      - (For historial reasons) the "ProcSet" used.  This can be shared.
+      - (For historical reasons) the "ProcSet" used.  This can be shared.
 
     To use, just invoke as a callable.
 
@@ -276,6 +277,37 @@ class PNGImage(PDFImage):
         data = _zlib.compress(_png.png_heuristic_predictor(image), 9)
 
         return "FlateDecode", data, params
+
+
+class JPEGImage(PDFImage):
+    """Use JPEG compression.
+    
+    :param quality: The JPEG compression quality, to be passed to the PIL library.
+    """
+    def __init__(self, image, quality=75, proc_set_object=None):
+        super().__init__(image, proc_set_object)
+        self._jpeg_quality = quality
+
+    def _get_filtered_data(self, image):
+        with _io.BytesIO() as file:
+            image.save(file, format="JPEG", optimize=True, quality=self._jpeg_quality)
+            buffer = file.getvalue()
+        return "DCTDecode", buffer, None
+
+
+class JPEGImageRaw(PDFImage):
+    """Use JPEG compression.  This is designed to be used on image files which are already
+    JPEG compressed; it stores the original file, and so avoid recompressing the image, and
+    hence the resultant loss in quality.
+    
+    :param jpeg_data: A `bytes` object of the JPEG file.
+    """
+    def __init__(self, image, jpeg_data, proc_set_object=None):
+        super().__init__(image, proc_set_object)
+        self._raw_jpeg_data = jpeg_data
+
+    def _get_filtered_data(self, image):
+        return "DCTDecode", self._raw_jpeg_data, None
 
 
 class TIFFImage(PDFImage):

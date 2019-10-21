@@ -3,7 +3,7 @@ import unittest.mock as mock
 
 import pdfimage.pdf_image as pdf_image
 import pdfimage.pdf_write as pdf_write
-import os
+import os, io
 import PIL.Image
 
 def test_PDFImageParts():
@@ -148,6 +148,27 @@ def test_TIFFImage_RGB(rgb_image, test_output_dir):
     writer = pdf_write.PDFWriter()
     parts.add_to_pdf_writer(writer)
     with open(os.path.join(test_output_dir, "tiff_image_rgb.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_JPEGImage(grey_image, test_output_dir):
+    image = pdf_image.JPEGImage(grey_image, quality=90)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "jpeg_image_grey.pdf"), "wb") as f:
+        f.write(bytes(writer))
+
+def test_JPEGImageRaw(grey_image, test_output_dir):
+    with io.BytesIO() as file:
+        grey_image.save(file, format="JPEG", optimize=True, quality=95)
+        buffer = file.getvalue()
+    image = pdf_image.JPEGImageRaw(grey_image, buffer)
+    parts = image()
+
+    writer = pdf_write.PDFWriter()
+    parts.add_to_pdf_writer(writer)
+    with open(os.path.join(test_output_dir, "jpeg_raw_image_grey.pdf"), "wb") as f:
         f.write(bytes(writer))
 
 def test_Flate_Multiple_Image1(test_output_dir, rgb_image, blackwhite_image):
